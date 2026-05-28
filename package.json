@@ -1,0 +1,33 @@
+{
+  "name": "ink-witness",
+  "version": "0.1.0",
+  "description": "Reference INK transparency witness, hash-chained audit log with Merkle inclusion proofs",
+  "type": "module",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ad-Astra-Computing/witness.git"
+  },
+  "homepage": "https://ink.tulpa.network/extensions/witness/",
+  "bugs": {
+    "url": "https://github.com/Ad-Astra-Computing/witness/issues"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^3.1.0",
+    "canonicalize": "^3.0.0",
+    "hono": "^4.12.23",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260527.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7",
+    "wrangler": "^4.95.0"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+.wrangler/
+dist/
+.env
+.env.local
+result
+result-*
+.direnv/
+wrangler.toml

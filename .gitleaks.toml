@@ -1,0 +1,16 @@
+title = "INK witness gitleaks config"
+
+[extend]
+useDefault = true
+
+# Witness tests use deterministic Ed25519 keys and HKDF salts as
+# fixtures; they are documented as such and are not secrets.
+# Suppress ONLY the generic-api-key rule on test/*.ts so other
+# secret classes (AWS keys, GitHub tokens, PEM blocks, etc.) still
+# get caught if they ever slip in.
+[[allowlists]]
+description = "Deterministic test fixtures, generic-api-key only"
+targetRules = ["generic-api-key"]
+paths = [
+  '''test/.*\.ts$''',
+]

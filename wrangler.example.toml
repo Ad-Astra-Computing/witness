@@ -1,0 +1,32 @@
+name = "ink-witness"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+[placement]
+mode = "smart"
+
+[observability]
+enabled = true
+
+[durable_objects]
+bindings = [
+  { name = "WITNESS_LOG", class_name = "WitnessLog" }
+]
+
+[vars]
+WITNESS_DID = "did:web:witness.example.com"
+WITNESS_ORIGIN = "witness.example.com"
+AGENT_CARD_BASE_URL = "https://api.example.com"
+
+[[services]]
+binding = "AGENT_DIRECTORY"
+service = "your-agent-card-service"
+
+[[routes]]
+pattern = "witness.example.com"
+custom_domain = true
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WitnessLog"]
