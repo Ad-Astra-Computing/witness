@@ -588,7 +588,16 @@ export class WitnessLog extends DurableObject {
     const signature = await signData(checkpointBody, this.privateKey);
     const signed = `${checkpointBody}\n\n-- ${this.witnessOrigin} ${signature}\n`;
     return new Response(signed, {
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        // C2SP checkpoints are intentionally body-stable across requests at
+        // a given tree size, so verifiers compare treeSize/rootHash for
+        // monotonicity. The signed body itself has no timestamp by design
+        // (interop with sigsum/transparency.dev tooling). Disable upstream
+        // caching so an intermediary cannot pin a verifier to a stale but
+        // correctly-signed checkpoint after the log has advanced.
+        "Cache-Control": "no-store",
+      },
     });
   }
 
