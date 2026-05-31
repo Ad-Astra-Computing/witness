@@ -20,7 +20,7 @@ npm test          # vitest run
 npm run typecheck # tsc --noEmit
 ```
 
-Requires Node 22+ and npm 10+. Nix users can run `nix develop` for a pinned shell with Node 22, git, and gitleaks.
+Requires Node 24+ and npm 10+. Nix users can run `nix develop` for a pinned shell with Node 24, git, and gitleaks.
 
 ## Test policy
 

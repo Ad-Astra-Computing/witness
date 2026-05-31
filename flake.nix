@@ -11,7 +11,7 @@
       pkgs = nixpkgs.legacyPackages.${system};
     in {
       default = pkgs.mkShell {
-        packages = [pkgs.nodejs_22 pkgs.git pkgs.gitleaks];
+        packages = [pkgs.nodejs_24 pkgs.git pkgs.gitleaks];
         shellHook = ''
           cat <<'BANNER'
 

@@ -107,7 +107,7 @@ npm run typecheck   # tsc --noEmit
 npm run dev         # wrangler dev (requires wrangler login)
 ```
 
-For Nix users: `nix develop` gives a pinned Node 22 + git + gitleaks + wrangler shell.
+For Nix users: `nix develop` gives a pinned Node 24 + git + gitleaks + wrangler shell.
 
 ## Compatibility
 

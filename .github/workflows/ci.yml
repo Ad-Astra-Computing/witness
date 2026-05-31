@@ -47,16 +47,17 @@ jobs:
       - name: Typecheck
         run: nix develop --command npm run typecheck
 
-  # Forward-compat probe: runs weekly (not per-PR) since the canonical
-  # supported runtime is Node 22 via the Nix shell.
-  node-24-compat:
+  # Backward-compat probe: runs weekly (not per-PR) since the canonical
+  # supported runtime is Node 24 via the Nix shell. Keeps a check that
+  # Node 22 still passes for contributors who haven't bumped yet.
+  node-22-compat:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 24.x
+          node-version: 22.x
           cache: npm
       - run: npm ci
       - run: npm test
