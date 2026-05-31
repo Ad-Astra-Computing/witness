@@ -547,6 +547,46 @@ export function createApp() {
     });
   });
 
+  app.get("/ink/v1/agents/:agentId/audit-summary", async (c) => {
+    // Public reputation endpoint: anyone can query coarse aggregated
+    // counts for any agent. The witness is a transparency log so these
+    // numbers are intentionally non-sensitive. Per-IP rate limit
+    // prevents bulk scraping for reputation-database enumeration.
+    const rawAgentId = c.req.param("agentId");
+    if (!rawAgentId || rawAgentId.length > 256 || !/^[A-Za-z0-9_:.\-]+$/.test(rawAgentId)) {
+      return c.json({ error: "invalid_agent_id" }, 400);
+    }
+    const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+    // Per-IP + global rate limit. Per-IP alone is bypassable by
+    // distributed clients, the global cap pushes back on that.
+    // The CDN cache (60s) absorbs repeat lookups of the same
+    // agentId before any of these counts ticks.
+    const rl = await checkRateLimit(c.env, [
+      { key: `agent-summary:ip:${ip}`, maxPerMinute: 30 },
+      { key: "agent-summary:global", maxPerMinute: 600 },
+    ]);
+    if (!rl.ok) {
+      c.res.headers.set("Retry-After", "60");
+      return c.json({ error: "rate_limit_exceeded", exceeded: rl.exceeded }, 429);
+    }
+    const stub = getWitnessLog(c.env);
+    const doReq = new Request("https://witness.internal/agent-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentId: rawAgentId }),
+    });
+    const res = await stub.fetch(doReq);
+    // Add a short edge cache so repeated lookups for the same agent
+    // (e.g. shield scoring multiple messages from the same sender)
+    // do not re-hit the DO every time. 60 seconds keeps the data
+    // fresh enough for reputation decisions.
+    const headers = new Headers(res.headers);
+    if (res.ok) {
+      headers.set("Cache-Control", "public, max-age=60, s-maxage=60");
+    }
+    return new Response(res.body, { status: res.status, headers });
+  });
+
   app.get("/.well-known/did.json", async (c) => {
     const stub = getWitnessLog(c.env);
     const res = await stub.fetch(new Request("https://witness.internal/identity"));

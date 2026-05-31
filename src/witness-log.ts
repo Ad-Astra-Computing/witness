@@ -347,8 +347,8 @@ export class WitnessLog extends DurableObject {
       const committed = this.ctx.storage.transactionSync(() => {
         const r = this.tree.appendLeaf(eventHash);
         this.ctx.storage.sql.exec(
-          `INSERT INTO audit_events (event_id, message_id, agent_id, sequence, event_hash, counterparty_id, event_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO audit_events (event_id, message_id, agent_id, sequence, event_hash, counterparty_id, event_json, event_type)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           event.id,
           event.messageId ?? null,
           event.agentId,
@@ -356,6 +356,7 @@ export class WitnessLog extends DurableObject {
           eventHash,
           event.counterpartyId ?? null,
           JSON.stringify(event),
+          event.eventType,
         );
         return r;
       });
@@ -578,6 +579,89 @@ export class WitnessLog extends DurableObject {
    *  Cross-format substitution is structurally prevented because every other
    *  bytes-signed-by-this-key format starts with a different first line
    *  (e.g. inclusion receipts begin "ink/audit-inclusion/v1\\n"). */
+  /**
+   * Public aggregated reputation summary for an agent. Returns coarse
+   * counts only — no event content, no relationship details, no
+   * Merkle proofs. The witness is a transparency log so the
+   * aggregated counts are intentionally public: any holder of the
+   * agentId can ask "how many events involving this agent have been
+   * witnessed, how many were rejections / signature failures, and
+   * when was the agent first seen". Per-event detail still requires
+   * INK-authed /query and the requester being a party to the event.
+   */
+  async handleAgentSummary(request: Request): Promise<Response> {
+    let parsed: { agentId?: unknown };
+    try {
+      parsed = await request.json();
+    } catch {
+      return Response.json({ error: "invalid_json" }, { status: 400 });
+    }
+    const agentId = parsed?.agentId;
+    // Mirrors the SAFE_ID_REGEX cap on submitted events: keep the
+    // ALLOWED character set in lockstep so an agent id that could be
+    // stored can also be queried back.
+    if (typeof agentId !== "string" || agentId.length < 1 || agentId.length > 256 ||
+        !/^[A-Za-z0-9_:.\-]+$/.test(agentId)) {
+      return Response.json({ error: "invalid_agent_id" }, { status: 400 });
+    }
+    // Event types we treat as "high-risk" for reputation purposes:
+    // rejections, signature failures, replay attempts, and the
+    // INK Containment Phase 1 misuse events.
+    const HIGH_RISK_TYPES = [
+      "message.rejected",
+      "signature.failed",
+      "signature.revoked_rejected",
+      "replay.detected",
+      "transport_scope_violation",
+      "handshake_rate_limited",
+      "handshake_budget_exhausted",
+    ];
+    // Event types that indicate the message was successfully processed.
+    const ACCEPTED_TYPES = [
+      "message.delivered",
+      "message.acted",
+      "message.received",
+    ];
+    const highRiskPlaceholders = HIGH_RISK_TYPES.map(() => "?").join(", ");
+    const acceptedPlaceholders = ACCEPTED_TYPES.map(() => "?").join(", ");
+    // Single aggregated query. Both agent_id and counterparty_id paths
+    // are aggregated so the counts cover every event the agent was
+    // party to. CASE WHEN preserves a single table scan over
+    // SUM(FILTER) which SQLite does not support universally.
+    // Use created_at (real indexed column) rather than json_extract
+    // over event_json so this hot endpoint doesn't parse JSON per
+    // matched row. The few-second difference between event timestamp
+    // and witness ingest time is acceptable for reputation purposes.
+    const sql = `
+      SELECT
+        SUM(CASE WHEN event_type IN (${highRiskPlaceholders}) THEN 1 ELSE 0 END) AS high_risk_count,
+        SUM(CASE WHEN event_type IN (${acceptedPlaceholders}) THEN 1 ELSE 0 END) AS accepted_count,
+        COUNT(*) AS total_events,
+        MIN(created_at) AS known_since
+      FROM audit_events
+      WHERE agent_id = ? OR counterparty_id = ?
+    `;
+    const rows = this.ctx.storage.sql
+      .exec(sql, ...HIGH_RISK_TYPES, ...ACCEPTED_TYPES, agentId, agentId)
+      .toArray();
+    const r = rows[0] ?? {};
+    const highRiskCount = Number(r.high_risk_count ?? 0);
+    const acceptedCount = Number(r.accepted_count ?? 0);
+    const totalEvents = Number(r.total_events ?? 0);
+    const knownSinceRaw = r.known_since;
+    const knownSince = typeof knownSinceRaw === "string" && knownSinceRaw.length > 0
+      ? knownSinceRaw
+      : null;
+    return Response.json({
+      schemaVersion: "ink.witness.agent-summary.v1",
+      agentId,
+      highRiskCount,
+      acceptedCount,
+      totalEvents,
+      knownSince,
+    });
+  }
+
   async handleCheckpoint(): Promise<Response> {
     const { treeSize, rootHash } = this.tree.getState();
     const checkpointBody = formatCheckpoint({
@@ -645,6 +729,9 @@ export class WitnessLog extends DurableObject {
     }
     if (url.pathname === "/checkpoint" && request.method === "GET") {
       return this.handleCheckpoint();
+    }
+    if (url.pathname === "/agent-summary" && request.method === "POST") {
+      return this.handleAgentSummary(request);
     }
     if (url.pathname === "/identity" && request.method === "GET") {
       return this.handleIdentity();

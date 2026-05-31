@@ -260,6 +260,42 @@ async function createMockDO() {
         });
       }
 
+      if (url.pathname === "/agent-summary" && request.method === "POST") {
+        const body = await request.json() as { agentId?: string };
+        const agentId = body.agentId;
+        if (typeof agentId !== "string" || !/^[A-Za-z0-9_:.\-]+$/.test(agentId) || agentId.length > 256) {
+          return Response.json({ error: "invalid_agent_id" }, { status: 400 });
+        }
+        const HIGH_RISK = new Set([
+          "message.rejected", "signature.failed", "signature.revoked_rejected",
+          "replay.detected", "transport_scope_violation",
+          "handshake_rate_limited", "handshake_budget_exhausted",
+        ]);
+        const ACCEPTED = new Set(["message.delivered", "message.acted", "message.received"]);
+        let highRiskCount = 0;
+        let acceptedCount = 0;
+        let totalEvents = 0;
+        let knownSince: string | null = null;
+        for (const e of events) {
+          if (e.agentId !== agentId && e.counterpartyId !== agentId) continue;
+          totalEvents++;
+          if (HIGH_RISK.has(e.eventType as string)) highRiskCount++;
+          else if (ACCEPTED.has(e.eventType as string)) acceptedCount++;
+          const ts = e.timestamp as string | undefined;
+          if (typeof ts === "string" && (knownSince === null || ts < knownSince)) {
+            knownSince = ts;
+          }
+        }
+        return Response.json({
+          schemaVersion: "ink.witness.agent-summary.v1",
+          agentId,
+          highRiskCount,
+          acceptedCount,
+          totalEvents,
+          knownSince,
+        });
+      }
+
       return new Response("Not Found", { status: 404 });
     },
   };
@@ -925,6 +961,58 @@ describe("Witness Endpoints", () => {
       expect(res.status).toBe(400);
       const json = await res.json() as { error: string };
       expect(json.error).toContain("future");
+    });
+  });
+
+  describe("GET /ink/v1/agents/:agentId/audit-summary", () => {
+    it("returns the schema-versioned shape with the requested agentId", async () => {
+      const kp = await generateKeypair();
+      const agentId = deriveAgentId(kp.publicKey);
+      // Submit one event so totalEvents has a known value.
+      const { body, auth } = await makeSignedSubmitRequest(kp);
+      const submitRes = await app.request("/ink/v1/audit/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: auth },
+        body: JSON.stringify(body),
+      }, env);
+      expect(submitRes.status).toBe(200);
+
+      const res = await app.request(`/ink/v1/agents/${encodeURIComponent(agentId)}/audit-summary`, { method: "GET" }, env);
+      expect(res.status).toBe(200);
+      const json = await res.json() as Record<string, unknown>;
+      expect(json.schemaVersion).toBe("ink.witness.agent-summary.v1");
+      expect(json.agentId).toBe(agentId);
+      expect(typeof json.totalEvents).toBe("number");
+      expect(json.totalEvents).toBeGreaterThanOrEqual(1);
+      expect(typeof json.highRiskCount).toBe("number");
+      expect(typeof json.acceptedCount).toBe("number");
+    });
+
+    it("returns zero counts for an unknown agent", async () => {
+      const res = await app.request("/ink/v1/agents/tulpa%3Aunknown-agent/audit-summary", { method: "GET" }, env);
+      expect(res.status).toBe(200);
+      const json = await res.json() as Record<string, unknown>;
+      expect(json.highRiskCount).toBe(0);
+      expect(json.acceptedCount).toBe(0);
+      expect(json.totalEvents).toBe(0);
+      expect(json.knownSince).toBeNull();
+    });
+
+    it("rejects an agent id with invalid characters", async () => {
+      const res = await app.request("/ink/v1/agents/bad%20agent%20id/audit-summary", { method: "GET" }, env);
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects an empty agent id", async () => {
+      const res = await app.request("/ink/v1/agents//audit-summary", { method: "GET" }, env);
+      // Empty param falls through to 404 since the route requires a non-empty segment.
+      expect([400, 404]).toContain(res.status);
+    });
+
+    it("sets a short Cache-Control on successful responses", async () => {
+      const res = await app.request("/ink/v1/agents/tulpa%3Asome-agent/audit-summary", { method: "GET" }, env);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Cache-Control")).toContain("max-age=60");
     });
   });
 });
