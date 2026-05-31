@@ -4,9 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  schedule:
-    # Weekly node-24-compat probe; the per-PR canonical job is nix-checks.
-    - cron: "37 6 * * 1"
 
 permissions:
   contents: read
@@ -47,11 +44,27 @@ jobs:
       - name: Typecheck
         run: nix develop --command npm run typecheck
 
-  # Backward-compat probe: runs weekly (not per-PR) since the canonical
-  # supported runtime is Node 24 via the Nix shell. Keeps a check that
-  # Node 22 still passes for contributors who haven't bumped yet.
+  # Canonical Node 24 probe — runs on every push/PR alongside the Nix
+  # shell so the supported runtime is checked outside the Nix sandbox
+  # too. nix-checks above is the authoritative build (uses the flake's
+  # pinned nodejs_24), this job just gives a fast no-Nix sanity check.
+  node-24:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+
+  # Backward-compat probe — Node 22 isn't canonical anymore but plenty
+  # of downstream operators are still on 22. Keeps a per-push check
+  # that the library hasn't accidentally drifted onto a Node 24-only
+  # API surface.
   node-22-compat:
-    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
