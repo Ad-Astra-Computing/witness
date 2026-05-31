@@ -1,5 +1,7 @@
 # INK transparency witness
 
+> Reference implementation. The production witness at `witness.tulpa.network` is a separate fork and may diverge — protocol-correctness fixes flow back here, but deployment-specific endpoints (e.g. Tulpa-internal reputation reads) stay in the production fork. Open PRs welcome for protocol-correctness work.
+
 A reference implementation of the third-party audit-service role from the [INK protocol](https://ink.tulpa.network) (Auditability §7). Runs on Cloudflare Workers + Durable Objects. Appends hash-chained, Ed25519-signed audit events to a Merkle log and returns inclusion proofs.
 
 Status: v0.x, reference implementation. Compatible with INK `0.1`. This repository is a protocol reference and operator starting point, not a hosted service product with a guaranteed release cadence. Operating a witness using this code does not make the witness trusted; verifiers choose which witness identities and checkpoints to rely on.
@@ -11,7 +13,7 @@ Ad Astra Computing operates two instances of this code so adopters have somewher
 - [`witness.tulpa.network`](https://witness.tulpa.network) (`did:web:witness.tulpa.network`): production. Real Tulpa-network audit traffic. Not a sandbox; do not point quickstart loops or test scripts here.
 - [`witness-demo.tulpa.network`](https://witness-demo.tulpa.network) (`did:web:witness-demo.tulpa.network`): public verify-against lane for adopters and the INK quickstart. Separate Durable Object, separate Merkle tree, rate-limit caps tuned for tutorial debugging slack rather than production-traffic profile. May be reset periodically; treat receipts from this instance as integration-test artifacts only.
 
-Both run the code in this repository. Other operators are free to deploy their own instance and ask counterparties to pin a different identity; nothing in INK privileges any particular witness.
+Both deployments are operated from a production fork that stays in sync with this repository for protocol-correctness work but may carry deployment-specific endpoints not present here. Other operators are free to deploy their own instance from this code and ask counterparties to pin a different identity; nothing in INK privileges any particular witness.
 
 | | |
 |---|---|
