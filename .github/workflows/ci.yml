@@ -25,7 +25,7 @@ jobs:
             experimental-features = nix-command flakes
 
       - name: Cache Nix store
-        uses: DeterminateSystems/magic-nix-cache-action@v13
+        uses: DeterminateSystems/magic-nix-cache-action@v14
 
       - name: Cache npm
         uses: actions/cache@v5
