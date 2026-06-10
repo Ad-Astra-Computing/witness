@@ -22,7 +22,38 @@ export function bytesToHex(bytes: Uint8Array): string {
 
 // ── JCS Canonicalization ──
 
+/** A number is safe for canonical JSON only if every conforming canonicalizer
+ *  serializes it identically: reject non-finite values, negative zero, and any
+ *  value whose shortest form uses exponential notation. Mirrors the INK library
+ *  so the witness and the library agree on the exact signed byte string. */
+function isJcsSafeNumber(n: number): boolean {
+  if (!Number.isFinite(n)) return false;
+  if (Object.is(n, -0)) return false;
+  return !/[eE]/.test(String(n));
+}
+
+/** Reject any JCS-unsafe number anywhere in the value before canonicalizing, so
+ *  the canonical bytes are unambiguous across implementations. Depth-bounded to
+ *  avoid stack exhaustion on a hostile object (events are already byte-capped at
+ *  the HTTP layer). */
+function assertJcsSafeNumbers(value: unknown, depth = 0): void {
+  if (depth > 64) throw new Error("object too deep to canonicalize safely");
+  if (typeof value === "number") {
+    if (!isJcsSafeNumber(value)) throw new Error("number is not JCS-safe");
+    return;
+  }
+  if (value === null || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (const item of value) assertJcsSafeNumbers(item, depth + 1);
+    return;
+  }
+  for (const v of Object.values(value as Record<string, unknown>)) {
+    assertJcsSafeNumbers(v, depth + 1);
+  }
+}
+
 function jcsCanonicalize(obj: unknown): string {
+  assertJcsSafeNumbers(obj);
   const result = canonicalize(obj);
   if (result === undefined) throw new Error("Failed to canonicalize");
   return result;
@@ -39,15 +70,17 @@ export async function verifyAuditEventSignature(
   // Ed25519 signatures are exactly 64 bytes = 86 unpadded base64url chars.
   if (!/^[A-Za-z0-9_-]{86}$/.test(signature)) return false;
   const { agentSignature: _, ...eventWithoutSig } = event;
-  const canonical = jcsCanonicalize(eventWithoutSig);
-  // Domain separation: must match signAuditEvent prefix
-  const prefixed = `ink/audit-event\n${canonical}`;
-  const bytes = new TextEncoder().encode(prefixed);
   try {
+    // Canonicalize inside the try: an event carrying a JCS-unsafe number is
+    // rejected (returns false) rather than throwing out of the verifier.
+    const canonical = jcsCanonicalize(eventWithoutSig);
+    // Domain separation: must match signAuditEvent prefix
+    const prefixed = `ink/audit-event\n${canonical}`;
+    const bytes = new TextEncoder().encode(prefixed);
     const sig = base64urlDecode(signature);
-    return await ed.verifyAsync(sig, bytes, publicKey);
+    return await ed.verifyAsync(sig, bytes, publicKey, { zip215: false });
   } catch {
-    // Malformed signature (invalid base64url, wrong byte length, bad key) — treat as invalid
+    // Malformed signature/number/encoding — treat as invalid.
     return false;
   }
 }
@@ -461,7 +494,7 @@ async function verifyWithCandidateKeys(
     );
     if (hinted) {
       try {
-        const valid = await ed.verifyAsync(sigBytes, sigBase, hinted.publicKey);
+        const valid = await ed.verifyAsync(sigBytes, sigBase, hinted.publicKey, { zip215: false });
         if (valid) return { verified: true, keyId: hinted.keyId };
       } catch {
         // Fall through to normal iteration
@@ -475,7 +508,7 @@ async function verifyWithCandidateKeys(
   for (const key of [...active, ...retired]) {
     if (hintKeyId && key.keyId === hintKeyId) continue; // Already tried
     try {
-      const valid = await ed.verifyAsync(sigBytes, sigBase, key.publicKey);
+      const valid = await ed.verifyAsync(sigBytes, sigBase, key.publicKey, { zip215: false });
       if (valid) return { verified: true, keyId: key.keyId };
     } catch {
       // Key failed, try next
@@ -651,7 +684,7 @@ export async function verifyInkTransportAuth(opts: {
   }
 
   try {
-    const valid = await ed.verifyAsync(sigBytes, sigBaseBytes, publicKey);
+    const valid = await ed.verifyAsync(sigBytes, sigBaseBytes, publicKey, { zip215: false });
     if (!valid) {
       return { valid: false, error: "invalid_signature" };
     }
