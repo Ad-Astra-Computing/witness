@@ -547,6 +547,25 @@ export function createApp() {
     });
   });
 
+  app.get("/ink/v1/consistency", async (c) => {
+    // Validate query parameters before forwarding; the DO re-validates and
+    // bounds them against the live tree size.
+    const firstRaw = c.req.query("first");
+    const secondRaw = c.req.query("second");
+    if (firstRaw === undefined || secondRaw === undefined || !/^\d+$/.test(firstRaw) || !/^\d+$/.test(secondRaw)) {
+      return c.json({ error: "first and second must be non-negative integers" }, 400);
+    }
+
+    const stub = getWitnessLog(c.env);
+    const res = await stub.fetch(
+      new Request(`https://witness.internal/consistency?first=${firstRaw}&second=${secondRaw}`),
+    );
+    return new Response(res.body, {
+      status: res.status,
+      headers: res.headers,
+    });
+  });
+
   app.get("/ink/v1/agents/:agentId/audit-summary", async (c) => {
     // Public reputation endpoint: anyone can query coarse aggregated
     // counts for any agent. The witness is a transparency log so these

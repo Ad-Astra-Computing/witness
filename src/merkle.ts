@@ -178,6 +178,20 @@ export class MerkleTree {
   }
 
   /**
+   * Generate an RFC 6962 Section 2.1.2 consistency proof that the tree of
+   * `first` leaves is a prefix of the tree of `second` leaves: the sibling
+   * subtree hashes a verifier needs to reconstruct both roots. Returns null for
+   * non-integer or out-of-range sizes. The proof is the empty array (and valid)
+   * when `first` is 0 or equals `second`, since there is nothing to prove.
+   */
+  getConsistencyProof(first: number, second: number): string[] | null {
+    if (!Number.isInteger(first) || !Number.isInteger(second)) return null;
+    if (first < 0 || second < 0 || first > second || second > this.treeSize) return null;
+    if (first === 0 || first === second) return [];
+    return this.buildConsistencyProof(first, 0, second, true);
+  }
+
+  /**
    * Verify an inclusion proof. Pure/static — no tree state needed.
    *
    * Rejects non-canonical proofs: extra or missing elements are not allowed.
@@ -292,6 +306,28 @@ export class MerkleTree {
       const leftHash = this.computeSubtreeHash(start, split);
       return [leftHash, ...this.buildProof(leafIndex, start + split, size - split)];
     }
+  }
+
+  /**
+   * RFC 6962 SUBPROOF recursion over the subtree covering [start, start+size).
+   * `b` marks whether this subtree is still the rightmost complete subtree of
+   * the first tree, in which case its hash is omitted (the verifier already
+   * derives it); once the recursion descends into a strictly smaller prefix the
+   * flag clears and the subtree hash is emitted.
+   */
+  private buildConsistencyProof(m: number, start: number, size: number, b: boolean): string[] {
+    if (m === size) return b ? [] : [this.computeSubtreeHash(start, size)];
+    const split = largestPowerOf2LessThan(size);
+    if (m <= split) {
+      return [
+        ...this.buildConsistencyProof(m, start, split, b),
+        this.computeSubtreeHash(start + split, size - split),
+      ];
+    }
+    return [
+      ...this.buildConsistencyProof(m - split, start + split, size - split, false),
+      this.computeSubtreeHash(start, split),
+    ];
   }
 
   /**

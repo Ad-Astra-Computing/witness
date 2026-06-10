@@ -706,6 +706,26 @@ export class WitnessLog extends DurableObject {
     });
   }
 
+  /** Return an RFC 6962 consistency proof between two tree sizes. */
+  handleConsistency(request: Request): Response {
+    const url = new URL(request.url);
+    const firstRaw = url.searchParams.get("first");
+    const secondRaw = url.searchParams.get("second");
+    if (firstRaw === null || secondRaw === null || !/^\d+$/.test(firstRaw) || !/^\d+$/.test(secondRaw)) {
+      return Response.json({ error: "first and second must be non-negative integers" }, { status: 400 });
+    }
+    const first = Number(firstRaw);
+    const second = Number(secondRaw);
+    if (!Number.isSafeInteger(first) || !Number.isSafeInteger(second)) {
+      return Response.json({ error: "first or second out of range" }, { status: 400 });
+    }
+    const proof = this.tree.getConsistencyProof(first, second);
+    if (proof === null) {
+      return Response.json({ error: "require 0 <= first <= second <= treeSize" }, { status: 400 });
+    }
+    return Response.json({ first, second, proof });
+  }
+
   /** Return DID document and public key. */
   async handleIdentity(): Promise<Response> {
     return Response.json({
@@ -738,6 +758,9 @@ export class WitnessLog extends DurableObject {
     }
     if (url.pathname === "/leaves" && request.method === "GET") {
       return this.handleLeaves(request);
+    }
+    if (url.pathname === "/consistency" && request.method === "GET") {
+      return this.handleConsistency(request);
     }
     if (url.pathname === "/ratelimit-check" && request.method === "POST") {
       return this.handleRateLimitCheck(request);
