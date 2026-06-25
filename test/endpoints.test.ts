@@ -1015,4 +1015,84 @@ describe("Witness Endpoints", () => {
       expect(res.headers.get("Cache-Control")).toContain("max-age=60");
     });
   });
+
+  describe("CORS for public read endpoints", () => {
+    it("GET /ink/v1/checkpoint includes Access-Control-Allow-Origin", async () => {
+      const res = await app.request("/ink/v1/checkpoint", { method: "GET" }, env);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    });
+
+    it("GET /ink/v1/checkpoint does NOT emit Vary: Origin (ACAO is static *)", async () => {
+      // With a static "*" we never echo the request Origin, so Vary: Origin
+      // would only fragment the CDN cache without changing the response.
+      const res = await app.request("/ink/v1/checkpoint", { method: "GET" }, env);
+      const vary = res.headers.get("Vary")?.toLowerCase() ?? "";
+      expect(vary).not.toContain("origin");
+    });
+
+    it("OPTIONS preflight on /ink/v1/checkpoint returns 204 with CORS headers", async () => {
+      const res = await app.request("/ink/v1/checkpoint", { method: "OPTIONS" }, env);
+      expect(res.status).toBe(204);
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+      expect(res.headers.get("Access-Control-Allow-Methods")?.toUpperCase()).toContain("GET");
+    });
+
+    it("GET /ink/v1/leaves includes Access-Control-Allow-Origin", async () => {
+      // The middleware tags every response on a public-read path with CORS,
+      // regardless of body status — assert the header alone, not the body.
+      const res = await app.request("/ink/v1/leaves?start=0&count=10", { method: "GET" }, env);
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    });
+
+    it("GET /ink/v1/consistency includes Access-Control-Allow-Origin", async () => {
+      // Params may be missing/invalid (400), but CORS tags the response either way.
+      const res = await app.request("/ink/v1/consistency?first=1&second=2", { method: "GET" }, env);
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    });
+
+    it("GET /ink/v1/agents/:id/audit-summary includes Access-Control-Allow-Origin", async () => {
+      // Response may be 200 or 404 depending on whether the agent has events;
+      // CORS should be present either way.
+      const res = await app.request("/ink/v1/agents/tulpa%3Asomecorsprobe/audit-summary", { method: "GET" }, env);
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    });
+
+    it("auth-required POST /ink/v1/audit/submit does NOT include Access-Control-Allow-Origin", async () => {
+      // Sending without auth fails before any handler — the absence of the
+      // CORS header confirms the middleware is scoped to public reads only.
+      const res = await app.request(
+        "/ink/v1/audit/submit",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        },
+        env,
+      );
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    });
+
+    it("auth-required POST /ink/v1/audit/query does NOT include Access-Control-Allow-Origin", async () => {
+      const res = await app.request(
+        "/ink/v1/audit/query",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        },
+        env,
+      );
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    });
+
+    it("OPTIONS on auth endpoints is NOT short-circuited to a CORS 204", async () => {
+      // The preflight handler is scoped to the public-read paths only, so an
+      // OPTIONS to an auth endpoint must not return the 204 + ACAO preflight.
+      for (const path of ["/ink/v1/audit/submit", "/ink/v1/audit/query"]) {
+        const res = await app.request(path, { method: "OPTIONS" }, env);
+        expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+      }
+    });
+  });
 });
