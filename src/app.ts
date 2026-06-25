@@ -250,6 +250,45 @@ export function createApp() {
     return new TextDecoder().decode(merged);
   }
 
+  // ── CORS for public read endpoints ──
+  //
+  // /checkpoint, /leaves, /consistency and /agents/:id/audit-summary
+  // are designed to be publicly readable: they expose only the signed
+  // Merkle head, leaf hashes and per-agent counts that a transparency
+  // verifier needs. Permitting cross-origin GETs lets browser-side
+  // verifiers (a homepage widget, third-party log auditors) hit the
+  // witness directly without a server proxy, which is the whole point
+  // of having a public log. Auth-required endpoints (submit, query) do
+  // NOT get this header — they aren't designed for browser use, and
+  // adding CORS to them would just be confusing dead weight.
+  const PUBLIC_READ_PATHS = [
+    /^\/ink\/v1\/checkpoint$/,
+    /^\/ink\/v1\/leaves$/,
+    /^\/ink\/v1\/consistency$/,
+    /^\/ink\/v1\/agents\/[^/]+\/audit-summary$/,
+  ];
+  app.use("*", async (c, next) => {
+    const path = new URL(c.req.url).pathname;
+    const isPublicRead = PUBLIC_READ_PATHS.some((re) => re.test(path));
+    if (!isPublicRead) return next();
+    if (c.req.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+          "Access-Control-Max-Age": "86400",
+        },
+      });
+    }
+    await next();
+    // Static "*" — never echo the request Origin, so no Vary needed.
+    // Vary: Origin would push the CDN to cache one copy per origin and
+    // waste storage on a response that doesn't actually vary.
+    c.res.headers.set("Access-Control-Allow-Origin", "*");
+  });
+
   // ── Routes ──
 
   app.post("/ink/v1/audit/submit", async (c) => {
