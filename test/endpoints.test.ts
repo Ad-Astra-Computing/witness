@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as ed from "@noble/ed25519";
 import { createApp } from "../src/app.js";
 import type { Env } from "../src/types.js";
@@ -110,6 +110,22 @@ async function makeSignedSubmitRequest(kp: { privateKey: Uint8Array; publicKey: 
     kp.privateKey,
   );
   return { body, auth };
+}
+
+/** Freeze the wall clock for a rate-limit test. The limiter counts requests in
+ *  fixed one-minute windows keyed on Math.floor(now / 60_000). Across the tens
+ *  to hundreds of sequential signed submits these tests make, the real clock can
+ *  cross a window boundary, resetting the count so the request that should be
+ *  the (cap + 1)th lands in a fresh window and returns 200 instead of 429. That
+ *  is a pure test-timing flake, not a limiter bug. Freezing the clock puts every
+ *  request in one window so the assertion is deterministic. Only Date is faked;
+ *  setTimeout and friends stay real so async I/O still settles. The frozen
+ *  instant is the real now, so the signed event timestamps and the witness
+ *  freshness check stay mutually consistent. afterEach restores the real clock. */
+function freezeRateLimitClock(): void {
+  const now = Date.now();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(now);
 }
 
 /** Build a signed query request body + Authorization header */
@@ -332,6 +348,12 @@ describe("Witness Endpoints", () => {
     app = createApp();
   });
 
+  // A few tests freeze the clock (see freezeRateLimitClock); always restore the
+  // real clock afterwards so the freeze cannot leak into an unrelated test.
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   describe("POST /ink/v1/audit/submit", () => {
     it("returns InkAuditInclusion with inclusionProof for valid signed request", async () => {
       const kp = await generateKeypair();
@@ -498,6 +520,7 @@ describe("Witness Endpoints", () => {
     });
 
     it("rate limits after 30 events per minute from same agent", { timeout: 30_000 }, async () => {
+      freezeRateLimitClock();
       const kp = await generateKeypair();
 
       // Send 30 events — all should succeed
@@ -525,6 +548,7 @@ describe("Witness Endpoints", () => {
     });
 
     it("rate limit is per-agent (different agents are independent)", { timeout: 30_000 }, async () => {
+      freezeRateLimitClock();
       const kpA = await generateKeypair();
       const kpB = await generateKeypair();
 
@@ -551,6 +575,7 @@ describe("Witness Endpoints", () => {
     });
 
     it("rate limits by IP across distinct fresh keypairs", { timeout: 30_000 }, async () => {
+      freezeRateLimitClock();
       const sharedIp = "203.0.113.42";
       for (let i = 0; i < 60; i++) {
         const kp = await generateKeypair();
@@ -583,6 +608,7 @@ describe("Witness Endpoints", () => {
     });
 
     it("rate limits by /24 CIDR across distinct IPs in the same prefix", { timeout: 30_000 }, async () => {
+      freezeRateLimitClock();
       const ips = ["203.0.113.10", "203.0.113.20", "203.0.113.30", "203.0.113.40", "203.0.113.50", "203.0.113.60"];
       for (let i = 0; i < 300; i++) {
         const kp = await generateKeypair();
