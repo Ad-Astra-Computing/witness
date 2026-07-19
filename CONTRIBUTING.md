@@ -14,13 +14,16 @@ Contributions are accepted under the project's dual license: MIT OR Apache-2.0 (
 
 ## Development setup
 
+`nix develop` is the recommended entrypoint. It provides the pinned toolchain CI uses: Node 24, git and gitleaks. Enable `experimental-features = nix-command flakes` in `~/.config/nix/nix.conf` first so it runs without extra flags.
+
 ```bash
-npm install
+nix develop
+npm ci
 npm test          # vitest run
 npm run typecheck # tsc --noEmit
 ```
 
-Requires Node 24+ and npm 10+. Nix users can run `nix develop` for a pinned shell with Node 24, git, and gitleaks.
+Without Nix you need Node 24+ and npm 10+.
 
 ## Test policy
 
