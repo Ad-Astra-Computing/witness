@@ -101,13 +101,13 @@ The witness publishes its identity public key at `/identity` for verifier conven
 
 ## Local development
 
+`nix develop` is the recommended entrypoint and provides the full toolchain: a pinned Node 24 plus git and gitleaks. Enable `experimental-features = nix-command flakes` in `~/.config/nix/nix.conf` once so it runs without extra flags. wrangler stays an npm devDependency invoked via npx, so its version is pinned by `package-lock.json`.
+
 ```bash
 npm test            # vitest, no Cloudflare runtime needed
 npm run typecheck   # tsc --noEmit
 npm run dev         # wrangler dev (requires wrangler login)
 ```
-
-For Nix users: `nix develop` gives a pinned Node 24 + git + gitleaks + wrangler shell.
 
 ## Compatibility
 
