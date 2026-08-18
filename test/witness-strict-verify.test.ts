@@ -53,7 +53,15 @@ describe("witness JCS number guard", () => {
   });
 
   it("computeEventHash accepts ordinary integers", async () => {
-    const h = await computeEventHash({ id: "e6", seq: 42, ratio: 1.5 });
+    const h = await computeEventHash({ id: "e6", seq: 42, total: 9007199254740991 });
     expect(h).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("computeEventHash refuses a fractional value", async () => {
+    // A fraction is where JSON serializers and strict RFC 8785 number
+    // formatting disagree, so INK's signed-body profile is safe integers only.
+    // A leaf hashed over a fraction is a leaf no INK verifier can recompute.
+    await expect(computeEventHash({ id: "e7", ratio: 1.5 })).rejects.toThrow();
+    await expect(computeEventHash({ id: "e8", score: 0.95 })).rejects.toThrow();
   });
 });

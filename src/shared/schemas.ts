@@ -1,8 +1,11 @@
 import { z } from "zod";
 
-// Mirrors @adastracomputing/ink InkAuditEventTypeSchema in src/models/ink-audit.ts.
-// Keep both lists in lockstep; any new event type in the INK lib MUST land here
-// before deploy, or the witness will reject conformant submissions.
+// The set of audit event types this witness accepts. Nothing here verifies
+// that the set still matches INK's, and no test can: the witness does not
+// depend on the INK library. Treat the list as this deployment's own policy,
+// with a known failure mode — an event type INK adds and this list lacks is a
+// conformant submission the witness rejects. Widening the list is the fix; a
+// comment claiming the two agree would only be true on the day it was written.
 export const InkAuditEventTypeSchema = z.enum([
   // Message lifecycle
   "message.sent",
