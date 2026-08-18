@@ -21,7 +21,7 @@ const InternalQuerySchema = z.object({
   messageId: z.string().min(1).max(256).regex(/^[A-Za-z0-9_:.\-]+$/),
   requester: z.string().min(1).max(256).regex(/^[A-Za-z0-9_:.\-]+$/),
 });
-import { formatCheckpoint } from "./shared/checkpoint.js";
+import { formatCheckpoint, isValidCheckpointOrigin } from "./shared/checkpoint.js";
 import { encryptPrivateKey, decryptPrivateKeyWithFallback, isEncryptedKey, validateWitnessKeySecret } from "./key-encryption.js";
 
 /** Hard upper bound on nonce_cache rows to prevent storage growth between
@@ -55,8 +55,17 @@ export class WitnessLog extends DurableObject {
     if (typeof env.WITNESS_DID !== "string" || env.WITNESS_DID.length === 0) {
       throw new Error("WITNESS_DID must be set in wrangler [vars]");
     }
-    if (typeof env.WITNESS_ORIGIN !== "string" || env.WITNESS_ORIGIN.length === 0) {
-      throw new Error("WITNESS_ORIGIN must be set in wrangler [vars]");
+    // WITNESS_ORIGIN is not just a label: it is the first line of every
+    // checkpoint body and the identity inside each `-- <origin> <signature>`
+    // line. A verifier splits that line at its first space, so an origin
+    // carrying whitespace (or a control character, or more than 256
+    // characters) yields checkpoints no verifier can accept. Fail at startup
+    // rather than signing a log nobody can verify.
+    if (!isValidCheckpointOrigin(env.WITNESS_ORIGIN)) {
+      throw new Error(
+        "WITNESS_ORIGIN must be a non-empty string of 1-256 printable ASCII characters " +
+          "with no spaces — it is the checkpoint origin line and the signature-line identity",
+      );
     }
     this.witnessDid = env.WITNESS_DID;
     this.witnessOrigin = env.WITNESS_ORIGIN;
@@ -302,7 +311,16 @@ export class WitnessLog extends DurableObject {
       if (previousEvent.sequence !== Number(latestForAgent.sequence)) {
         return Response.json({ error: "Integrity error" }, { status: 500 });
       }
-      const expectedChainHash = await computeAgentChainHash(previousEvent as Record<string, unknown>);
+      // A stored event that no longer canonicalizes (e.g. a legacy row written
+      // under a looser number profile) must surface as an explicit integrity
+      // error, not an unhandled throw that reads as a generic outage.
+      let expectedChainHash: string;
+      try {
+        expectedChainHash = await computeAgentChainHash(previousEvent as Record<string, unknown>);
+      } catch (e) {
+        console.error("witness chain-head canonicalization failed", e);
+        return Response.json({ error: "Integrity error" }, { status: 500 });
+      }
       if (event.previousEventHash !== expectedChainHash) {
         return Response.json(
           { error: "previousEventHash does not match agent chain head" },
@@ -513,7 +531,16 @@ export class WitnessLog extends DurableObject {
       if (event.agentId !== requester && event.counterpartyId !== requester) {
         return Response.json({ error: "Integrity error" }, { status: 500 });
       }
-      const recomputedLeafHash = await computeEventHash(event as unknown as Record<string, unknown>);
+      let recomputedLeafHash: string;
+      try {
+        recomputedLeafHash = await computeEventHash(event as unknown as Record<string, unknown>);
+      } catch (e) {
+        // Same reasoning as the chain-head path: a stored row the current
+        // canonicalization rule refuses is an integrity failure, and the
+        // witness must not sign a response that omits it silently.
+        console.error("witness leaf recomputation failed", e);
+        return Response.json({ error: "Integrity error" }, { status: 500 });
+      }
       if (recomputedLeafHash !== storedLeafHash) {
         return Response.json({ error: "Integrity error" }, { status: 500 });
       }
