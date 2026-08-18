@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { Env } from "./types.js";
 import { InkAuditSubmitSchema, MAX_AUDIT_EVENT_DATA_BYTES } from "./shared/schemas.js";
 import { verifyAuditEventSignature, extractPublicKeyFromAgentId, verifyInkTransportAuth, resolveKeySetFromCard, MAX_CANDIDATE_KEYS, type WitnessCandidateKey } from "./shared/crypto.js";
+import { decodeSignedBodyBytes, SignedBodyError } from "./shared/parse-signed-body.js";
+import { parseTimestampMs } from "./shared/timestamp.js";
 import { landingPageHtml } from "./landing.js";
 
 /** Create the Hono app. Exported for testing. */
@@ -222,9 +224,13 @@ export function createApp() {
    * once the cap is exceeded, without buffering further chunks. Protects
    * against chunked-transfer requests that omit or lie about Content-Length
    * — c.req.text() otherwise buffers the entire body before any size check.
+   *
+   * Returns raw bytes, not text. The transport signature covers the bytes, so
+   * the decode has to happen behind the signed-body gate (fatal UTF-8) rather
+   * than here, where a substitution would be silent.
    */
-  async function readBodyWithCap(req: Request, capBytes: number): Promise<string | null> {
-    if (!req.body) return "";
+  async function readBodyWithCap(req: Request, capBytes: number): Promise<Uint8Array | null> {
+    if (!req.body) return new Uint8Array(0);
     const reader = req.body.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;
@@ -247,7 +253,7 @@ export function createApp() {
     const merged = new Uint8Array(total);
     let offset = 0;
     for (const c of chunks) { merged.set(c, offset); offset += c.byteLength; }
-    return new TextDecoder().decode(merged);
+    return merged;
   }
 
   // ── CORS for public read endpoints ──
@@ -301,9 +307,23 @@ export function createApp() {
 
     // Stream-read with a hard cap so a chunked request without Content-Length
     // can't force unbounded buffering before the size check.
-    const bodyText = await readBodyWithCap(c.req.raw, MAX_SUBMIT_BODY_BYTES);
-    if (bodyText === null) {
+    const bodyBytes = await readBodyWithCap(c.req.raw, MAX_SUBMIT_BODY_BYTES);
+    if (bodyBytes === null) {
       return c.json({ error: "Request body too large" }, 413);
+    }
+
+    // Byte-level gate before parsing: fatal UTF-8 decode, lone-surrogate escape
+    // scan, out-of-range number-literal scan. The transport signature covers
+    // these raw bytes, so a lenient decode here would let the witness sign a
+    // receipt over something other than what the sender signed.
+    let bodyText: string;
+    try {
+      bodyText = decodeSignedBodyBytes(bodyBytes);
+    } catch (e) {
+      if (e instanceof SignedBodyError) {
+        return c.json({ error: `invalid_signed_body: ${e.reason}` }, 400);
+      }
+      return c.json({ error: "Invalid JSON" }, 400);
     }
 
     let body: unknown;
@@ -380,12 +400,12 @@ export function createApp() {
       return c.json({ error: "Event agentId does not match submission sender" }, 400);
     }
 
-    // Audit event timestamp freshness check.
-    // The schema requires a datetime string, so invalid timestamps should be rejected.
-    // Reject NaN (malformed despite passing schema) and extreme future values.
-    const eventTimestamp = new Date(parsed.data.event.timestamp).getTime();
+    // Audit event timestamp freshness check. Parsed with the same strict
+    // RFC 3339 grammar as the transport timestamp, so the event carried in the
+    // signed body and the envelope around it are held to one rule.
+    const eventTimestamp = parseTimestampMs(parsed.data.event.timestamp);
     const MAX_EVENT_FUTURE_MS = 5 * 60 * 1000; // 5 minutes tolerance
-    if (isNaN(eventTimestamp)) {
+    if (eventTimestamp === null) {
       return c.json({ error: "Event timestamp is invalid" }, 400);
     }
     if (eventTimestamp > Date.now() + MAX_EVENT_FUTURE_MS) {
@@ -471,9 +491,20 @@ export function createApp() {
     }
 
     // Stream-read with a hard cap — same protection as /submit.
-    const bodyText = await readBodyWithCap(c.req.raw, MAX_QUERY_BODY_BYTES);
-    if (bodyText === null) {
+    const queryBodyBytes = await readBodyWithCap(c.req.raw, MAX_QUERY_BODY_BYTES);
+    if (queryBodyBytes === null) {
       return c.json({ error: "Request body too large" }, 413);
+    }
+
+    // Same byte-level gate as /submit: this body is signature-bearing too.
+    let bodyText: string;
+    try {
+      bodyText = decodeSignedBodyBytes(queryBodyBytes);
+    } catch (e) {
+      if (e instanceof SignedBodyError) {
+        return c.json({ error: `invalid_signed_body: ${e.reason}` }, 400);
+      }
+      return c.json({ error: "Invalid JSON" }, 400);
     }
 
     let bodyUnknown: unknown;
