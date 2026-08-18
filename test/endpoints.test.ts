@@ -379,6 +379,144 @@ describe("Witness Endpoints", () => {
       expect(Array.isArray(json.inclusionProof)).toBe(true);
     });
 
+    // ── Raw signed-body gate ──
+    //
+    // The transport signature covers the raw request bytes, so anything the
+    // witness decides after decoding is already too late: a lenient decode
+    // canonicalizes something the sender never signed. These cases are byte-
+    // level and cannot be expressed by building a JS object and stringifying
+    // it, which is why they went unnoticed. Each request body below is
+    // constructed as bytes.
+
+    it("rejects a body that is not valid UTF-8 instead of substituting U+FFFD", async () => {
+      const kp = await generateKeypair();
+      const body = await makeSubmitBody(kp);
+      const auth = await signInkTransport(
+        "POST", "/ink/v1/audit/submit", "did:web:witness.example.com",
+        body as unknown as Record<string, unknown>, body.timestamp, kp.privateKey,
+      );
+      // Splice a bare 0xff (never a legal UTF-8 byte) into the serialized body.
+      const clean = new TextEncoder().encode(JSON.stringify(body));
+      const dirty = new Uint8Array(clean.length + 1);
+      dirty.set(clean.subarray(0, clean.length - 1));
+      dirty[clean.length - 1] = 0xff;
+      dirty[clean.length] = clean[clean.length - 1]!;
+
+      const res = await app.request("/ink/v1/audit/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: auth },
+        body: dirty,
+      }, env);
+
+      expect(res.status).toBe(400);
+      const json = await res.json() as { error: string };
+      expect(json.error).toBe("invalid_signed_body: utf8");
+    });
+
+    it("rejects a body carrying a lone UTF-16 surrogate escape", async () => {
+      const kp = await generateKeypair();
+      const body = await makeSubmitBody(kp);
+      const raw = JSON.stringify(body).replace('"msg-001"', '"msg-\\ud800"');
+      const auth = await signInkTransport(
+        "POST", "/ink/v1/audit/submit", "did:web:witness.example.com",
+        JSON.parse(raw) as Record<string, unknown>, body.timestamp, kp.privateKey,
+      );
+
+      const res = await app.request("/ink/v1/audit/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: auth },
+        body: new TextEncoder().encode(raw),
+      }, env);
+
+      expect(res.status).toBe(400);
+      const json = await res.json() as { error: string };
+      expect(json.error).toBe("invalid_signed_body: surrogate");
+    });
+
+    it("rejects an out-of-range number literal shadowed by a duplicate member", async () => {
+      const kp = await generateKeypair();
+      const body = await makeSubmitBody(kp);
+      // Last-wins member semantics mean the parsed value never carries the
+      // literal, so only a raw-text scan can see it. One implementation
+      // canonicalizes this body cleanly; another refuses the document.
+      const raw = JSON.stringify(body).replace(
+        '"protocol":"ink/0.1"',
+        '"shadow":1e309,"shadow":1,"protocol":"ink/0.1"',
+      );
+      const auth = await signInkTransport(
+        "POST", "/ink/v1/audit/submit", "did:web:witness.example.com",
+        JSON.parse(raw) as Record<string, unknown>, body.timestamp, kp.privateKey,
+      );
+
+      const res = await app.request("/ink/v1/audit/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: auth },
+        body: new TextEncoder().encode(raw),
+      }, env);
+
+      expect(res.status).toBe(400);
+      const json = await res.json() as { error: string };
+      expect(json.error).toBe("invalid_signed_body: number-range");
+    });
+
+    it("rejects an event whose data carries a fractional number", async () => {
+      // The reachable shape of the drift: `data` is an open record, so a score
+      // used to pass the number gate, reach the tree, and receive a signed
+      // inclusion receipt that no INK verifier could recompute.
+      const kp = await generateKeypair();
+      const event = await makeAuditEvent(kp);
+      event.data = { score: 0.95 };
+      event.agentSignature = await signAuditEvent(event, kp.privateKey);
+      const body = {
+        protocol: "ink/0.1" as const,
+        type: "network.tulpa.audit_submit" as const,
+        from: event.agentId as string,
+        to: "did:web:witness.example.com",
+        event,
+        nonce: crypto.randomUUID().replace(/-/g, ""),
+        timestamp: new Date().toISOString(),
+      };
+      const auth = await signInkTransport(
+        "POST", "/ink/v1/audit/submit", "did:web:witness.example.com",
+        body as unknown as Record<string, unknown>, body.timestamp, kp.privateKey,
+      );
+
+      const res = await app.request("/ink/v1/audit/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: auth },
+        body: JSON.stringify(body),
+      }, env);
+
+      expect(res.status).toBe(401);
+      const json = await res.json() as { error: string };
+      expect(json.error).toBe("uncanonicalizable_body");
+    });
+
+    it("rejects a transport timestamp that only a lenient date parser accepts", async () => {
+      // `new Date("2026-02-29T00:00:00Z")` rolls over to March 1 and
+      // `new Date("2026-01-01")` is a valid date-only value. Transport auth runs
+      // before schema validation, so whatever it accepts is the operative rule
+      // for the signed timestamp.
+      for (const stamp of ["2026-02-29T00:00:00.000Z", "2026-01-01", "2026-01-01 00:00:00Z"]) {
+        const kp = await generateKeypair();
+        const body = { ...(await makeSubmitBody(kp)), timestamp: stamp };
+        const auth = await signInkTransport(
+          "POST", "/ink/v1/audit/submit", "did:web:witness.example.com",
+          body as unknown as Record<string, unknown>, stamp, kp.privateKey,
+        );
+
+        const res = await app.request("/ink/v1/audit/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: auth },
+          body: JSON.stringify(body),
+        }, env);
+
+        expect(res.status).toBe(401);
+        const json = await res.json() as { error: string };
+        expect(json.error).toBe("invalid_timestamp");
+      }
+    });
+
     it("rejects request without Authorization header", async () => {
       const kp = await generateKeypair();
       const body = await makeSubmitBody(kp);

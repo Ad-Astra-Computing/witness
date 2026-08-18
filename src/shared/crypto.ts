@@ -1,5 +1,8 @@
 import * as ed from "@noble/ed25519";
 import canonicalize from "canonicalize";
+import { hasUnpairedSurrogate } from "./surrogate.js";
+import { hasUnsafeObjectKey } from "./member-name.js";
+import { parseTimestampMs } from "./timestamp.js";
 
 // ── Encoding helpers ──
 
@@ -22,40 +25,96 @@ export function bytesToHex(bytes: Uint8Array): string {
 
 // ── JCS Canonicalization ──
 
-/** A number is safe for canonical JSON only if every conforming canonicalizer
- *  serializes it identically: reject non-finite values, negative zero, and any
- *  value whose shortest form uses exponential notation. Mirrors the INK library
- *  so the witness and the library agree on the exact signed byte string. */
-function isJcsSafeNumber(n: number): boolean {
-  if (!Number.isFinite(n)) return false;
-  if (Object.is(n, -0)) return false;
-  return !/[eE]/.test(String(n));
+/**
+ * A number is safe for a signed body only if every conforming canonicalizer
+ * serializes it to identical bytes, which restricts it to a safe integer: a
+ * value with no fractional part that round-trips exactly through an IEEE-754
+ * double (|v| <= 2^53 - 1). A safe integer prints as a plain base-10 decimal
+ * under both ECMAScript `String(n)` and Go `strconv.FormatInt`, so the bytes
+ * agree. Fractions and larger magnitudes are exactly where JSON serializers
+ * and strict RFC 8785 number formatting disagree; negative zero is rejected
+ * because it serializes as `0`, losing the sign. The profile is on the decoded
+ * value, not the JSON token, so `1e2` decodes to `100` and is accepted.
+ *
+ * This must agree with the INK protocol's number profile exactly: a value the
+ * witness commits to a leaf but an INK verifier refuses to hash is a receipt
+ * nobody can check. The agreement is asserted by a pinned accept/reject table
+ * in `test/ink-parity.test.ts` rather than claimed here in prose, because a
+ * comment cannot notice when the other side moves.
+ */
+export function isJcsSafeNumber(n: number): boolean {
+  return Number.isSafeInteger(n) && !Object.is(n, -0);
 }
 
-/** Reject any JCS-unsafe number anywhere in the value before canonicalizing, so
- *  the canonical bytes are unambiguous across implementations. Depth-bounded to
- *  avoid stack exhaustion on a hostile object (events are already byte-capped at
- *  the HTTP layer). */
-function assertJcsSafeNumbers(value: unknown, depth = 0): void {
-  if (depth > 64) throw new Error("object too deep to canonicalize safely");
-  if (typeof value === "number") {
-    if (!isJcsSafeNumber(value)) throw new Error("number is not JCS-safe");
-    return;
+/** Bounds for the pre-canonicalize walk. Well above any real audit event, but
+ *  small enough that the walk stays cheap and bails fast on a hostile one. */
+const MAX_CANONICALIZE_NODES = 10_000;
+const MAX_CANONICALIZE_DEPTH = 32;
+const MAX_CANONICALIZE_CHARS = 1_200_000;
+/** Cap on the canonical output. Defense in depth alongside the node walk: a
+ *  value can be small in node count and still expand to huge canonical bytes
+ *  through long strings. */
+const MAX_CANONICAL_BYTES = 1_048_576;
+
+/**
+ * Cheap depth / node / character walk over a value before it reaches
+ * `canonicalize`, which also applies the number profile to every scalar.
+ * Bails before the recursive sort-and-serialize runs, so a pathological value
+ * cannot burn CPU inside canonicalization. Non-throwing; the caller decides.
+ */
+export function isWithinCanonicalizeBounds(value: unknown): boolean {
+  let nodes = 0;
+  let chars = 0;
+  function walk(v: unknown, depth: number): boolean {
+    if (depth > MAX_CANONICALIZE_DEPTH) return false;
+    if (++nodes > MAX_CANONICALIZE_NODES) return false;
+    if (v === null || typeof v !== "object") {
+      if (typeof v === "string") {
+        chars += v.length;
+        if (chars > MAX_CANONICALIZE_CHARS) return false;
+      } else if (typeof v === "number" && !isJcsSafeNumber(v)) {
+        return false;
+      }
+      return true;
+    }
+    if (Array.isArray(v)) {
+      for (const item of v) if (!walk(item, depth + 1)) return false;
+      return true;
+    }
+    for (const key of Object.keys(v as Record<string, unknown>)) {
+      if (++nodes > MAX_CANONICALIZE_NODES) return false;
+      chars += key.length;
+      if (chars > MAX_CANONICALIZE_CHARS) return false;
+      if (!walk((v as Record<string, unknown>)[key], depth + 1)) return false;
+    }
+    return true;
   }
-  if (value === null || typeof value !== "object") return;
-  if (Array.isArray(value)) {
-    for (const item of value) assertJcsSafeNumbers(item, depth + 1);
-    return;
-  }
-  for (const v of Object.values(value as Record<string, unknown>)) {
-    assertJcsSafeNumbers(v, depth + 1);
-  }
+  return walk(value, 0);
 }
 
 function jcsCanonicalize(obj: unknown): string {
-  assertJcsSafeNumbers(obj);
+  if (!isWithinCanonicalizeBounds(obj)) {
+    throw new Error("Input exceeds maximum allowed complexity");
+  }
+  // No canonicalized value may carry a lone UTF-16 surrogate: a parser that
+  // rewrites it to U+FFFD would produce different canonical bytes. The raw
+  // request text is scanned before parsing too; this covers every other path
+  // into canonicalization, including values read back out of storage.
+  if (hasUnpairedSurrogate(obj)) {
+    throw new Error("Input contains an unpaired UTF-16 surrogate");
+  }
+  // Nor may it carry an object key that would serialize as an escaped member
+  // name. The witness runs on workerd, where V8 decodes such a name to a
+  // different string entirely, so a leaf committed over one would be a leaf no
+  // verifier reproduces.
+  if (hasUnsafeObjectKey(obj)) {
+    throw new Error("Input contains an object key with a quote, backslash or control character");
+  }
   const result = canonicalize(obj);
   if (result === undefined) throw new Error("Failed to canonicalize");
+  if (result.length > MAX_CANONICAL_BYTES) {
+    throw new Error("Canonical output exceeds maximum allowed size");
+  }
   return result;
 }
 
@@ -92,9 +151,12 @@ export async function verifyAuditEventSignature(
  * Note the name: this function computes the MERKLE LEAF HASH and is
  * used to populate the `event_hash` column. For per-agent chain
  * linkage (validating `previousEventHash`), use `computeAgentChainHash`
- * instead. Mixing the two will silently reject conformant submissions
- * because @adastracomputing/ink agents compute `previousEventHash` via
- * the unprefixed form.
+ * instead. Mixing the two silently rejects conformant submissions,
+ * because INK agents compute `previousEventHash` via the unprefixed form.
+ *
+ * The digest this produces for a fixed event is pinned in
+ * `test/ink-parity.test.ts`. That pin, not this comment, is what keeps the
+ * rule from drifting.
  *
  * BREAKING CHANGE (v0.2): Previously computed as raw SHA-256(data) without
  * the 0x00 leaf prefix. Existing Merkle trees built before this change are
@@ -115,13 +177,13 @@ export async function computeEventHash(event: Record<string, unknown>): Promise<
 /**
  * Per-agent chain-linkage hash. Used to validate `event.previousEventHash`
  * against the agent's most recently committed event. UNPREFIXED SHA-256
- * over JCS-canonicalized event (excluding agentSignature), matching the
- * `@adastracomputing/ink` library's `computeEventHash` exactly.
+ * over JCS-canonicalized event (excluding agentSignature).
  *
  * Distinct from the Merkle leaf hash (`computeEventHash` in this file),
  * which RFC 6962 mandates be domain-separated with a leading 0x00.
  * Conformant INK agents compute `previousEventHash` via this unprefixed
- * form; the witness MUST validate against the same.
+ * form; the witness MUST validate against the same, so the digest for a
+ * fixed event is pinned in `test/ink-parity.test.ts`.
  */
 export async function computeAgentChainHash(event: Record<string, unknown>): Promise<string> {
   const { agentSignature: _, ...eventWithoutSig } = event;
@@ -582,9 +644,14 @@ export async function verifyInkTransportAuth(opts: {
     return { valid: false, error: "missing_timestamp" };
   }
 
-  // Timestamp freshness check (§3.5)
-  const msgTime = new Date(timestamp).getTime();
-  if (isNaN(msgTime)) {
+  // Timestamp freshness check (§3.5). Parsed with the strict RFC 3339 grammar,
+  // not `new Date`: transport auth runs ahead of schema validation, so this
+  // parse is the operative rule for the signed timestamp. A lenient parse here
+  // would accept date-only, zone-less or calendar-rolled values that an
+  // independent verifier rejects, and would map two distinct strings to one
+  // instant.
+  const msgTime = parseTimestampMs(timestamp);
+  if (msgTime === null) {
     return { valid: false, error: "invalid_timestamp" };
   }
   const now = Date.now();
@@ -603,12 +670,21 @@ export async function verifyInkTransportAuth(opts: {
   if (crlf.test(opts.method)) return { valid: false, error: "invalid_auth_scheme" };
   if (crlf.test(opts.path)) return { valid: false, error: "invalid_auth_scheme" };
   if (crlf.test(opts.recipientDid)) return { valid: false, error: "invalid_auth_scheme" };
-  // timestamp is already validated above as a proper ISO date string so newlines
-  // would be caught by isNaN(msgTime), but guard explicitly for defence-in-depth.
+  // timestamp is already validated above as a strict RFC 3339 string so newlines
+  // would be caught by the parse, but guard explicitly for defence-in-depth.
   if (crlf.test(timestamp)) return { valid: false, error: "invalid_timestamp" };
 
-  // Build signature base
-  const canonical = jcsCanonicalize(opts.body);
+  // Build signature base. Canonicalization refuses a body the signed-body
+  // profile does not admit (an unsafe number, a lone surrogate, an object key
+  // that would need escaping, nesting past the depth cap). That is an
+  // authentication failure, not a server fault:
+  // return it as one rather than throwing a 500 out of the auth path.
+  let canonical: string;
+  try {
+    canonical = jcsCanonicalize(opts.body);
+  } catch {
+    return { valid: false, error: "uncanonicalizable_body" };
+  }
   const sigBase = `ink/0.1\n${opts.method}\n${opts.path}\n${opts.recipientDid}\n${canonical}\n${timestamp}`;
   const sigBaseBytes = new TextEncoder().encode(sigBase);
   // Decode signature safely — malformed base64url must not throw a 500
