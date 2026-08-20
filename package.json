@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@noble/ed25519": "^3.1.0",
-    "canonicalize": "^3.0.0",
+    "canonicalize": "^4.0.0",
     "hono": "^4.13.1",
     "zod": "^4.4.3"
   },
