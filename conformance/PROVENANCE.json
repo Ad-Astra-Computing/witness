@@ -1,5 +1,6 @@
 {
   "source": "@adastracomputing/ink@0.19.0",
+  "integrity": "sha512-93QzbvS5ncOKUtvoT7W0n6HPQEpaY25kQVkgDztFsbj87IfPv/e51mCwwsz1O5tYlWB7Z0TKsljx3tgtRlOkRA==",
   "corpus": "ink.conformance.v1",
   "vendoredAt": "2026-09-08",
   "manifestSha256": "87934a91232ae57c12bfa3a0a3829408c176eaad93ab26abb2f5780e5495def6",

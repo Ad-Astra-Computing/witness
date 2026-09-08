@@ -41,6 +41,9 @@ export function isValidCheckpointOrigin(origin: unknown): origin is string {
   );
 }
 
+/** Parse a checkpoint body under the INK profile. Accepting an origin here says
+ *  the syntax is well formed, never that a log may publish under it: for that,
+ *  see `isValidCheckpointOrigin`. */
 export function parseCheckpoint(body: string): CheckpointData | null {
   // Reject oversized input before String.split allocates a partition array.
   if (typeof body !== "string" || body.length === 0 || body.length > MAX_CHECKPOINT_BODY) {
