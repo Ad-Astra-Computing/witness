@@ -78,23 +78,30 @@ function corpusRoot(argv) {
     throw new Error("usage: vendor-conformance.mjs <exact version>");
   }
   const tmp = mkdtempSync(join(tmpdir(), "ink-corpus-"));
-  const packed = JSON.parse(
-    execFileSync("npm", ["pack", `${PKG}@${version}`, "--pack-destination", tmp, "--json"], {
-      encoding: "utf8",
-    }),
-  )[0];
-  const tarball = join(tmp, packed.filename);
-  assertSafeArchive(tarball);
-  execFileSync("tar", ["-xzf", tarball, "-C", tmp, "--no-same-owner", "--no-same-permissions"]);
-  return {
-    root: join(tmp, "package", "conformance", "v1"),
-    source: `${PKG}@${version}`,
-    integrity: packed.integrity ?? null,
-    cleanup: () => rmSync(tmp, { recursive: true, force: true }),
-  };
+  const cleanup = () => rmSync(tmp, { recursive: true, force: true });
+  try {
+    const packed = JSON.parse(
+      execFileSync("npm", ["pack", `${PKG}@${version}`, "--pack-destination", tmp, "--json"], {
+        encoding: "utf8",
+      }),
+    )[0];
+    const tarball = join(tmp, packed.filename);
+    assertSafeArchive(tarball);
+    execFileSync("tar", ["-xzf", tarball, "-C", tmp, "--no-same-owner", "--no-same-permissions"]);
+    return {
+      root: join(tmp, "package", "conformance", "v1"),
+      source: `${PKG}@${version}`,
+      integrity: packed.integrity ?? null,
+      cleanup,
+    };
+  } catch (err) {
+    cleanup();
+    throw err;
+  }
 }
 
 const { root, source, integrity, cleanup } = corpusRoot(process.argv.slice(2));
+let staged = null;
 try {
   const manifestBytes = readFileSync(join(root, "manifest.json"));
   const manifest = JSON.parse(manifestBytes.toString("utf8"));
@@ -107,9 +114,12 @@ try {
   // checked-in corpus is replaced only once all of it passed. A failure
   // halfway through would otherwise leave a tree that is part one version and
   // part another, which is the one state the digests cannot detect.
-  const staging = `${OUT}.staging`;
+  // The scratch names carry the pid so two refreshes running at once cannot
+  // delete or rename each other's half-built tree.
+  const staging = `${OUT}.staging.${process.pid}`;
   rmSync(staging, { recursive: true, force: true });
   mkdirSync(join(staging, "vectors"), { recursive: true });
+  staged = staging;
 
   const vendored = [];
   for (const id of COVERED) {
@@ -149,12 +159,23 @@ try {
     ) + "\n",
   );
 
-  const previous = `${OUT}.previous`;
+  // Once the live corpus has been moved aside there is a window with no
+  // corpus at all. If installing the new one fails, put the old one back
+  // rather than leaving the repository with nothing to check against.
+  const previous = `${OUT}.previous.${process.pid}`;
   rmSync(previous, { recursive: true, force: true });
-  if (existsSync(OUT)) renameSync(OUT, previous);
-  renameSync(staging, OUT);
+  const moved = existsSync(OUT);
+  if (moved) renameSync(OUT, previous);
+  try {
+    renameSync(staging, OUT);
+  } catch (err) {
+    if (moved && !existsSync(OUT)) renameSync(previous, OUT);
+    throw err;
+  }
   rmSync(previous, { recursive: true, force: true });
   console.log(`vendored ${vendored.length} categories from ${source}`);
+  staged = null;
 } finally {
+  if (staged) rmSync(staged, { recursive: true, force: true });
   cleanup();
 }

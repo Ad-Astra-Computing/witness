@@ -15,7 +15,10 @@ if (process.argv.includes("--surfaces")) {
 // harness can prove it would actually report a disagreement between the witness
 // and the reference. A decider whose divergence nobody can detect is not a
 // decider. Off unless the variable is set.
+// INK_DIFF_MUTANT_KIND=drop withholds the answer instead of inverting it, so
+// the harness can also prove it notices a decider that says nothing.
 const MUTANT = process.env.INK_DIFF_MUTANT ?? "";
+const MUTANT_DROPS = process.env.INK_DIFF_MUTANT_KIND === "drop";
 
 const out: string[] = [];
 const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -31,6 +34,7 @@ for await (const line of rl) {
     decision = { result: "reject", reason: `__harness_error:${(err as Error).message}` };
   }
   if (MUTANT !== "" && c.surface === MUTANT) {
+    if (MUTANT_DROPS) continue;
     decision = { ...decision, result: decision.result === "accept" ? "reject" : "accept" };
   }
   out.push(JSON.stringify({ caseId: c.caseId, ...decision }));
