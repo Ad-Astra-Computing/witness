@@ -1,0 +1,49 @@
+{
+  "source": "@adastracomputing/ink@0.19.0",
+  "integrity": "sha512-93QzbvS5ncOKUtvoT7W0n6HPQEpaY25kQVkgDztFsbj87IfPv/e51mCwwsz1O5tYlWB7Z0TKsljx3tgtRlOkRA==",
+  "corpus": "ink.conformance.v1",
+  "vendoredAt": "2026-09-08",
+  "manifestSha256": "87934a91232ae57c12bfa3a0a3829408c176eaad93ab26abb2f5780e5495def6",
+  "vectors": [
+    {
+      "id": "jcs-number",
+      "caseCount": 16,
+      "sha256": "f6766a9f5778986ad0539b88f2c13f69b84f48360a4f91f46ec0acb5a2ae0140"
+    },
+    {
+      "id": "jcs-string-safety",
+      "caseCount": 10,
+      "sha256": "37efc17ff3886a5af903b707d05df80b65fdf9adc618605113d23fae7ba6d8c0"
+    },
+    {
+      "id": "merkle-checkpoint",
+      "caseCount": 21,
+      "sha256": "b5c794415ded843ea9d135e176ebe30d8252dbf7b1ca55697d325e9cbb5e55ef"
+    },
+    {
+      "id": "merkle-inclusion",
+      "caseCount": 14,
+      "sha256": "b532bf6cd32e4af6cdbf0ed754db45ccd3f046829d6ed31f05ccd96a3321f950"
+    },
+    {
+      "id": "merkle-leaf",
+      "caseCount": 15,
+      "sha256": "f542dd0c3884055b43dcc73a2f2e54e26fb4167e45096c3512a3f2c8f3dcd5c8"
+    },
+    {
+      "id": "signed-body-member-name",
+      "caseCount": 18,
+      "sha256": "c30da5c3d571709c20470de467aefe990dd741b34de5c2062d0efc795d08fc9b"
+    },
+    {
+      "id": "signed-body-utf8",
+      "caseCount": 21,
+      "sha256": "3e62d7ce03f2d6510afb8d0b1561da657596a470d66d313024ff4d10712e5114"
+    },
+    {
+      "id": "timestamp-validity",
+      "caseCount": 17,
+      "sha256": "164e52d9d7d71e12c07353f38192aa76ca77d2da2d2800fab1e0fb21ee1a9aec"
+    }
+  ]
+}
