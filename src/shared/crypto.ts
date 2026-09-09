@@ -92,7 +92,7 @@ export function isWithinCanonicalizeBounds(value: unknown): boolean {
   return walk(value, 0);
 }
 
-function jcsCanonicalize(obj: unknown): string {
+export function jcsCanonicalize(obj: unknown): string {
   if (!isWithinCanonicalizeBounds(obj)) {
     throw new Error("Input exceeds maximum allowed complexity");
   }
