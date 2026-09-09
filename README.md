@@ -62,6 +62,9 @@ src/
     crypto.ts          Transport auth (verifyInkTransportAuth) + multi-key
     schemas.ts         Zod request/response shapes
     checkpoint.ts      C2SP tlog-checkpoint format
+  conformance/
+    decide.ts          Adapter that answers conformance cases as this witness
+conformance/           Vendored INK conformance vectors + provenance
 test/                  vitest unit and integration suites
 docs/                  threat model + trust model
 ```
@@ -112,6 +115,19 @@ npm run dev         # wrangler dev (requires wrangler login)
 ## Compatibility
 
 This repository tracks INK `0.1`. The wire format is stable within `0.x` but the implementation may change without backward-compatible migration before `1.0`. If your downstream pins this repo, pin the tag.
+
+## Conformance
+
+The witness re-implements INK's byte-level rules rather than importing them. That independence is the point, since a rule two codebases agree on is a rule and a rule one codebase agrees with itself about is a habit, but it is also how the number profile once drifted a whole protocol revision behind INK without a single test failing.
+
+So a slice of the INK conformance corpus is checked in under `conformance/`, vendored from the published tarball and pinned by the digests in the corpus manifest. `test/conformance.test.ts` runs every vendored case against `src/conformance/decide.ts`, which composes the same functions the request paths call. The categories the witness does not decide are listed in that file with a line each on why, so a category added upstream fails a test rather than going unnoticed.
+
+Refresh the corpus deliberately, and commit what changes:
+
+```bash
+node scripts/vendor-conformance.mjs 0.19.0
+npm test
+```
 
 ## License
 
