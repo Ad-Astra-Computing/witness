@@ -63,6 +63,17 @@ function assertSafeArchive(tarball) {
   }
 }
 
+/** Run a tidy-up step that is happening because something else already went
+ *  wrong. Its own failure is worth saying out loud but must not replace the
+ *  error the caller is about to raise. */
+function quietly(step, what) {
+  try {
+    step();
+  } catch (err) {
+    console.warn(`${what}: ${err.message}`);
+  }
+}
+
 function corpusRoot(argv) {
   const fromPath = argv.indexOf("--from-path");
   if (fromPath !== -1) {
@@ -95,7 +106,8 @@ function corpusRoot(argv) {
       cleanup,
     };
   } catch (err) {
-    cleanup();
+    // Tidying up must not replace the reason the download failed.
+    quietly(cleanup, "could not remove the download directory");
     throw err;
   }
 }
@@ -175,7 +187,14 @@ try {
   rmSync(previous, { recursive: true, force: true });
   console.log(`vendored ${vendored.length} categories from ${source}`);
   staged = null;
-} finally {
-  if (staged) rmSync(staged, { recursive: true, force: true });
-  cleanup();
+} catch (err) {
+  // Both steps run, and neither is allowed to replace the reason the refresh
+  // failed.
+  if (staged) quietly(() => rmSync(staged, { recursive: true, force: true }), "could not remove the half-built corpus");
+  quietly(cleanup, "could not remove the download directory");
+  throw err;
 }
+
+// Nothing else went wrong, so a tidy-up failure is the only news there is and
+// it leaves scratch directories behind. Let it set the exit code.
+cleanup();
