@@ -19,7 +19,14 @@ const MAX_CHECKPOINT_LINE = 256;
  *  line, and inside the `-- <origin> <signature>` line. A verifier splits that
  *  signature line at its first space, so an origin containing whitespace
  *  produces a checkpoint that cannot be verified by anyone. Control characters
- *  would break the line structure outright. */
+ *  would break the line structure outright.
+ *
+ *  This is a rule about which origin a witness may publish under, not about
+ *  which bodies parse. The INK profile accepts any non-empty origin within the
+ *  line cap, including a non-ASCII one, and a parser that refuses those
+ *  disagrees with every other implementation about bodies it will never
+ *  produce itself. So the strict rule stays on the origin this witness chooses
+ *  and `parseCheckpoint` follows the profile. */
 const CHECKPOINT_ORIGIN_REGEX = /^[\x21-\x7e]+$/;
 
 /** Whether an origin is usable in a signed checkpoint. Operators should
@@ -34,6 +41,9 @@ export function isValidCheckpointOrigin(origin: unknown): origin is string {
   );
 }
 
+/** Parse a checkpoint body under the INK profile. Accepting an origin here says
+ *  the syntax is well formed, never that a log may publish under it: for that,
+ *  see `isValidCheckpointOrigin`. */
 export function parseCheckpoint(body: string): CheckpointData | null {
   // Reject oversized input before String.split allocates a partition array.
   if (typeof body !== "string" || body.length === 0 || body.length > MAX_CHECKPOINT_BODY) {
@@ -55,9 +65,9 @@ export function parseCheckpoint(body: string): CheckpointData | null {
   if (treeSizeLine.length > MAX_CHECKPOINT_LINE) return null;
   if (rootHash.length > MAX_CHECKPOINT_LINE) return null;
 
-  // Origin must be non-empty, and must survive the round trip through a signed
-  // checkpoint's `-- <origin> <signature>` line.
-  if (!isValidCheckpointOrigin(origin)) return null;
+  // Origin must be non-empty. That is the whole profile rule: it is the log
+  // identity and the domain separator the signature binds to.
+  if (origin.length === 0) return null;
 
   // Tree size must be a non-negative integer with no trailing junk
   if (!/^\d+$/.test(treeSizeLine)) return null;
