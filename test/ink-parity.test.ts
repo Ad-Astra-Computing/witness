@@ -306,11 +306,23 @@ describe("checkpoint parsing bounds", () => {
     expect(parseCheckpoint(`${origin}\n20\n${hash}\n`)).toBeNull();
   });
 
-  it("rejects an origin containing a space", () => {
-    // A verifier splits the `-- <origin> <signature>` line at its first space,
-    // so this origin yields a checkpoint no verifier can accept.
-    expect(parseCheckpoint(`witness example.com\n20\n${hash}\n`)).toBeNull();
+  it("parses an origin containing a space but will not publish under one", () => {
+    // The INK profile accepts any non-empty origin within the line cap, so the
+    // parser does too; this test asserted the opposite until the corpus said
+    // otherwise. A verifier splits the `-- <origin> <signature>` line at its
+    // first space, so a checkpoint under this origin is one no verifier can
+    // accept, which is a rule about the origin a witness chooses rather than
+    // about which bodies parse.
+    expect(parseCheckpoint(`witness example.com\n20\n${hash}\n`)).toEqual({
+      origin: "witness example.com",
+      treeSize: 20,
+      rootHash: hash,
+    });
     expect(isValidCheckpointOrigin("witness example.com")).toBe(false);
+  });
+
+  it("parses a non-ASCII origin", () => {
+    expect(parseCheckpoint(`wítness.example.com\n20\n${hash}\n`)?.origin).toBe("wítness.example.com");
   });
 
   it("rejects an origin containing a control character or non-ASCII text", () => {

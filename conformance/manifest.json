@@ -1,0 +1,267 @@
+{
+  "format": "ink.conformance.manifest.v1",
+  "corpus": "ink.conformance.v1",
+  "categories": [
+    {
+      "id": "agent-authorization",
+      "vector": "vectors/agent-authorization.json",
+      "profile": "authorization",
+      "spec": "specs/ink-agent-authorization.md",
+      "summary": "Sign-in challenge artifact: bare-host did:web rp, registry requestedScope, parser-independent redirectUri prefix rule, active-key-only RP signature at the verifier clock, validity window, and the challenge-derived grantId.",
+      "caseCount": 68,
+      "sha256": "d75409a670a45a7ce93ac80362c4fd49d3dbcaee4e11c55dfa3283e73a36de72"
+    },
+    {
+      "id": "agent-card",
+      "vector": "vectors/agent-card.json",
+      "profile": "base",
+      "spec": "specs/ink-agent-card.md",
+      "summary": "Agent Card validation, the pinned INK endpoint URL grammar, and the opt-in discovery descriptor exposure bound.",
+      "caseCount": 53,
+      "sha256": "4a8828e4ffaca4ae3dcfe5b1f45415bcd7c175ce17e32a966ae32c59e79c2e57"
+    },
+    {
+      "id": "agent-card-fetch",
+      "vector": "vectors/agent-card-fetch.json",
+      "profile": "base",
+      "spec": "specs/ink-agent-card-discovery-fetch.md",
+      "summary": "Agent Card discovery response contract (status, content type, size caps, identity binding, owner anti-substitution).",
+      "caseCount": 34,
+      "sha256": "689835be9ba72b648b19c10e413f875462202551743af0f672b5af3e7da8adf6"
+    },
+    {
+      "id": "agent-card-signature",
+      "vector": "vectors/agent-card-signature.json",
+      "profile": "base",
+      "spec": "specs/ink-agent-card-signature.md",
+      "summary": "Self-authenticating Agent Card proof: the cardSignature proof, rotation-chain rooting by principal kind, head binding, the unsigned-card ratchet, and the continuity and rollback rules.",
+      "caseCount": 50,
+      "sha256": "621971ee7012b98b2f3ae64f929b122a3bb79c3b83fa13c9876ae033563f79c2"
+    },
+    {
+      "id": "agent-card-signature-phase-c",
+      "vector": "vectors/agent-card-signature-phase-c.json",
+      "profile": "staged",
+      "spec": "specs/ink-agent-card-signature.md",
+      "summary": "Staged Phase C receiver rule: with the explicit enforcePhaseC flag on, an unsigned card is rejected outright and a cold did:web verifier fails closed on an unreachable resolver; with the flag off the pre-Phase-C decision stands.",
+      "caseCount": 10,
+      "sha256": "78149b8dddc30cb6db0d79b09ff330e0d3ad149e98226c0debc8646cc943af03"
+    },
+    {
+      "id": "audit-query-response",
+      "vector": "vectors/audit-query-response.json",
+      "profile": "audit",
+      "spec": "specs/ink-audit-query-response.md",
+      "summary": "Composite audit-query-response verification.",
+      "caseCount": 27,
+      "sha256": "7c3a80e03ed0aee122055c27594cd4c458b908092f89ce667ce74f5684382df2"
+    },
+    {
+      "id": "authorization-chain",
+      "vector": "vectors/authorization-chain.json",
+      "profile": "delegation",
+      "spec": "specs/ink-authorization-chain.md",
+      "summary": "Linear delegation chain of 2 to 4 grant-shaped links: parent-hash and issuer-subject continuity, monotonic scope and window attenuation with the delegation.extend gate, per-position lifetime ceilings, active-key-only per-link signatures, and the audience, presenter, window, replay, revocation and owner-verification context checks.",
+      "caseCount": 56,
+      "sha256": "397a11e8c01aa6b21768400fd9c34019ecbcc5df5d7a8f4af71d48ff324f9fd3"
+    },
+    {
+      "id": "authorization-grant",
+      "vector": "vectors/authorization-grant.json",
+      "profile": "authorization",
+      "spec": "specs/ink-authorization-grant.md",
+      "summary": "Scoped signed authorization grant: schema bounds, issuer-key signature, audience binding, presentation binding, validity window, replay, revocation, and the optional owner-verification requirement.",
+      "caseCount": 55,
+      "sha256": "458ba4c88776ca5eaf2d06fd2713b2fa83c4f203acea02d2d84b3235a7db08fe"
+    },
+    {
+      "id": "authorization-header",
+      "vector": "vectors/authorization-header.json",
+      "profile": "base",
+      "spec": "specs/ink-protocol.md",
+      "summary": "INK-Ed25519 transport Authorization-header grammar (§3.3): signature and optional keyId extraction, whitespace and CR/LF rejection.",
+      "caseCount": 23,
+      "sha256": "ffa600d2b59c788688feb154e487db15124481a00fb031bc9d08f5bd3b530f1a"
+    },
+    {
+      "id": "connection-payload",
+      "vector": "vectors/connection-payload.json",
+      "profile": "base",
+      "spec": "specs/ink-connection-payload.md",
+      "summary": "Connection request and response payload validation.",
+      "caseCount": 22,
+      "sha256": "b921d25e41b5060ef6b832c695375f60b58d7c8418b2172568f058d631549cc6"
+    },
+    {
+      "id": "discovery-query-envelope",
+      "vector": "vectors/discovery-query-envelope.json",
+      "profile": "discovery",
+      "spec": "specs/ink-discovery-query.md",
+      "summary": "Authenticated discovery query envelope: schema bounds, requester-key signature, audience binding, freshness window and nonce replay.",
+      "caseCount": 33,
+      "sha256": "2181af8610c66c38738c6f4108ca67e5df8f6de2bf8b50159ff473602d5a7c8f"
+    },
+    {
+      "id": "first-contact-transcript",
+      "vector": "vectors/first-contact-transcript.json",
+      "profile": "base",
+      "spec": "specs/ink-first-contact-transcript.md",
+      "summary": "End-to-end first-contact flow: card fetch, version selection, signed connection_request, accepted connection_response.",
+      "caseCount": 28,
+      "sha256": "975ad9af6db76cdc81acaada71cfafa6b7d0a8ad6bd4fa594b22773324406b8a"
+    },
+    {
+      "id": "handshake-message",
+      "vector": "vectors/handshake-message.json",
+      "profile": "containment",
+      "spec": "specs/ink-handshake-message.md",
+      "summary": "Challenge, rejection, and resolution message validation.",
+      "caseCount": 32,
+      "sha256": "b212175dfd33d03052ac1e052f0aab00f8918f6672a143068438443a0fdb60f9"
+    },
+    {
+      "id": "inclusion-receipt",
+      "vector": "vectors/inclusion-receipt.json",
+      "profile": "audit",
+      "spec": "specs/ink-inclusion-receipt.md",
+      "summary": "Composite inclusion-receipt verification.",
+      "caseCount": 39,
+      "sha256": "e8f41905b2b482ac82cac2262f92f99b14045ffe8060c69a94de29e99b431e2f"
+    },
+    {
+      "id": "jcs-number",
+      "vector": "vectors/jcs-number.json",
+      "profile": "base",
+      "spec": "specs/ink-jcs-number-profile.md",
+      "summary": "RFC 8785 JCS canonicalization and the safe-integer number profile.",
+      "caseCount": 16,
+      "sha256": "f6766a9f5778986ad0539b88f2c13f69b84f48360a4f91f46ec0acb5a2ae0140"
+    },
+    {
+      "id": "jcs-string-safety",
+      "vector": "vectors/jcs-string-safety.json",
+      "profile": "base",
+      "spec": "specs/ink-signed-string-safety.md",
+      "summary": "Lone UTF-16 surrogate rejection in signed strings.",
+      "caseCount": 10,
+      "sha256": "37efc17ff3886a5af903b707d05df80b65fdf9adc618605113d23fae7ba6d8c0"
+    },
+    {
+      "id": "key-rotation",
+      "vector": "vectors/key-rotation.json",
+      "profile": "base",
+      "spec": "specs/ink-key-rotation-spec.md",
+      "summary": "Key-window verification across active, retired, and revoked keys.",
+      "caseCount": 32,
+      "sha256": "068d22cd3912663f17a53f1a2e70dc7f2711e4cd534b8f3852d20a82f2a32cd7"
+    },
+    {
+      "id": "merkle-checkpoint",
+      "vector": "vectors/merkle-checkpoint.json",
+      "profile": "witness",
+      "spec": "specs/ink-merkle-checkpoint.md",
+      "summary": "C2SP tlog-checkpoint parsing and canonical formatting.",
+      "caseCount": 21,
+      "sha256": "b5c794415ded843ea9d135e176ebe30d8252dbf7b1ca55697d325e9cbb5e55ef"
+    },
+    {
+      "id": "merkle-consistency",
+      "vector": "vectors/merkle-consistency.json",
+      "profile": "witness",
+      "spec": "specs/ink-merkle-consistency.md",
+      "summary": "RFC 6962 consistency-proof verification.",
+      "caseCount": 19,
+      "sha256": "5a5d6d911e216880f8f426b589f49bf18e6ea8b9421d999a7d996015c63411fd"
+    },
+    {
+      "id": "merkle-inclusion",
+      "vector": "vectors/merkle-inclusion.json",
+      "profile": "witness",
+      "spec": "specs/ink-merkle-inclusion.md",
+      "summary": "RFC 6962 inclusion-proof verification.",
+      "caseCount": 14,
+      "sha256": "b532bf6cd32e4af6cdbf0ed754db45ccd3f046829d6ed31f05ccd96a3321f950"
+    },
+    {
+      "id": "merkle-leaf",
+      "vector": "vectors/merkle-leaf.json",
+      "profile": "audit",
+      "spec": "specs/ink-merkle-leaf.md",
+      "summary": "Audit-event Merkle leaf-hash computation.",
+      "caseCount": 15,
+      "sha256": "f542dd0c3884055b43dcc73a2f2e54e26fb4167e45096c3512a3f2c8f3dcd5c8"
+    },
+    {
+      "id": "payload-encryption",
+      "vector": "vectors/payload-encryption.json",
+      "profile": "encryption",
+      "spec": "specs/ink-payload-encryption.md",
+      "summary": "ECIES payload decryption: X25519 + HKDF-SHA256 + AES-256-GCM with the AAD-bound outer envelope.",
+      "caseCount": 22,
+      "sha256": "c2dff822a7e296748f6c801be935cc0783d162d5316b5d0d09c5b4d8b194fb43"
+    },
+    {
+      "id": "principal-normalization",
+      "vector": "vectors/principal-normalization.json",
+      "profile": "base",
+      "spec": "specs/ink-authorization-chain.md",
+      "summary": "Agent principal canonicalization (tulpa:/ink:/key: prefixes).",
+      "caseCount": 10,
+      "sha256": "c9e3d8e03de071b0aa3f8db58161e37b2e8b26db472b41bfc858372562d40c5a"
+    },
+    {
+      "id": "private-hostname",
+      "vector": "vectors/private-hostname.json",
+      "profile": "base",
+      "spec": "specs/ink-private-hostname.md",
+      "summary": "SSRF host-safety gate: classify a hostname as public or private/special/malformed.",
+      "caseCount": 58,
+      "sha256": "625f2a89e705b6194cd8d1cd0bbb1cbd256f2d81564d5520f5e2b387172f334e"
+    },
+    {
+      "id": "replay-freshness",
+      "vector": "vectors/replay-freshness.json",
+      "profile": "base",
+      "spec": "specs/ink-timestamp-grammar.md",
+      "summary": "Timestamp window and nonce replay rejection.",
+      "caseCount": 10,
+      "sha256": "931a393d978e202c76384a82aef3e1d76e3628ad0a4b109defa452745b78a17c"
+    },
+    {
+      "id": "signature-base",
+      "vector": "vectors/signature-base.json",
+      "profile": "base",
+      "spec": "specs/ink-protocol.md",
+      "summary": "Ed25519 verification over the canonical signature base.",
+      "caseCount": 15,
+      "sha256": "deffe5fc8962235932ef04ca8f6bba9ada59aefd0a1e1ddc7330a5b20e35a745"
+    },
+    {
+      "id": "signed-body-member-name",
+      "vector": "vectors/signed-body-member-name.json",
+      "profile": "base",
+      "spec": "specs/ink-signed-string-safety.md",
+      "summary": "Escaped object member names in a signed body, rejected on the raw text before parsing.",
+      "caseCount": 18,
+      "sha256": "c30da5c3d571709c20470de467aefe990dd741b34de5c2062d0efc795d08fc9b"
+    },
+    {
+      "id": "signed-body-utf8",
+      "vector": "vectors/signed-body-utf8.json",
+      "profile": "base",
+      "spec": "specs/ink-signed-string-safety.md",
+      "summary": "Raw-UTF-8 validity of a signed body, enforced at the byte boundary before parsing.",
+      "caseCount": 21,
+      "sha256": "3e62d7ce03f2d6510afb8d0b1561da657596a470d66d313024ff4d10712e5114"
+    },
+    {
+      "id": "timestamp-validity",
+      "vector": "vectors/timestamp-validity.json",
+      "profile": "base",
+      "spec": "specs/ink-timestamp-grammar.md",
+      "summary": "Strict INK timestamp grammar and epoch-millisecond parsing.",
+      "caseCount": 17,
+      "sha256": "164e52d9d7d71e12c07353f38192aa76ca77d2da2d2800fab1e0fb21ee1a9aec"
+    }
+  ]
+}

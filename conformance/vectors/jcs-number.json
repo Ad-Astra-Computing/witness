@@ -1,0 +1,175 @@
+{
+  "format": "ink.conformance.v1",
+  "category": "jcs-number",
+  "cases": [
+    {
+      "caseId": "zero-accepts",
+      "description": "Zero is a safe integer and canonicalizes to 0.",
+      "input": {
+        "bodyRaw": "{\"n\":0}"
+      },
+      "expect": {
+        "result": "accept",
+        "canonicalString": "{\"n\":0}"
+      }
+    },
+    {
+      "caseId": "positive-integer-accepts",
+      "description": "A small positive integer canonicalizes to its plain decimal.",
+      "input": {
+        "bodyRaw": "{\"n\":42}"
+      },
+      "expect": {
+        "result": "accept",
+        "canonicalString": "{\"n\":42}"
+      }
+    },
+    {
+      "caseId": "negative-integer-accepts",
+      "description": "A negative integer keeps its sign.",
+      "input": {
+        "bodyRaw": "{\"n\":-7}"
+      },
+      "expect": {
+        "result": "accept",
+        "canonicalString": "{\"n\":-7}"
+      }
+    },
+    {
+      "caseId": "max-safe-integer-accepts",
+      "description": "2^53-1 is the largest exactly representable integer and is accepted.",
+      "input": {
+        "bodyRaw": "{\"n\":9007199254740991}"
+      },
+      "expect": {
+        "result": "accept",
+        "canonicalString": "{\"n\":9007199254740991}"
+      }
+    },
+    {
+      "caseId": "exponential-source-integer-accepts",
+      "description": "An integer written in exponential notation decodes to its value and canonicalizes as a plain decimal, so the profile is on the value not the token.",
+      "input": {
+        "bodyRaw": "{\"n\":1e2}"
+      },
+      "expect": {
+        "result": "accept",
+        "canonicalString": "{\"n\":100}"
+      }
+    },
+    {
+      "caseId": "fraction-rejects",
+      "description": "A value with a fractional part is rejected; fractional canonicalization is where serializers disagree.",
+      "input": {
+        "bodyRaw": "{\"n\":3.14}"
+      },
+      "expect": {
+        "result": "reject"
+      }
+    },
+    {
+      "caseId": "exponential-magnitude-rejects",
+      "description": "A magnitude large enough to serialize in exponential notation is rejected even though it is an integer value.",
+      "input": {
+        "bodyRaw": "{\"n\":1e21}"
+      },
+      "expect": {
+        "result": "reject"
+      }
+    },
+    {
+      "caseId": "negative-zero-rejects",
+      "description": "Negative zero is rejected because it serializes as 0, losing the sign.",
+      "input": {
+        "bodyRaw": "{\"n\":-0}"
+      },
+      "expect": {
+        "result": "reject"
+      }
+    },
+    {
+      "caseId": "above-safe-integer-rejects",
+      "description": "2^53 exceeds the safe-integer range and is rejected.",
+      "input": {
+        "bodyRaw": "{\"n\":9007199254740992}"
+      },
+      "expect": {
+        "result": "reject"
+      }
+    },
+    {
+      "caseId": "far-above-safe-integer-rejects",
+      "description": "A value above the safe-integer range that does not round-trip exactly is rejected.",
+      "input": {
+        "bodyRaw": "{\"n\":9007199254740993}"
+      },
+      "expect": {
+        "result": "reject"
+      }
+    },
+    {
+      "caseId": "out-of-double-range-literal-rejects",
+      "description": "A literal with no double at all is rejected. This one is decided before parsing, by the raw-text range rule of ink-signed-string-safety.md, not by the value profile: ECMAScript decodes it to Infinity and Go refuses the document, so the two would otherwise disagree about whether the body exists.",
+      "input": {
+        "bodyRaw": "{\"n\":1e309}"
+      },
+      "expect": {
+        "result": "reject"
+      }
+    },
+    {
+      "caseId": "shadowed-out-of-double-range-literal-rejects",
+      "description": "An out-of-range literal that a later duplicate member shadows is still rejected. Last-wins member semantics hide it from every check on the decoded value, so an implementation that runs the range rule after parsing canonicalizes {\"n\":1} here and verifies a signature over bytes another implementation refuses outright.",
+      "input": {
+        "bodyRaw": "{\"n\":1e309,\"n\":1}"
+      },
+      "expect": {
+        "result": "reject"
+      }
+    },
+    {
+      "caseId": "in-range-duplicate-member-accepts-last",
+      "description": "The control for the case above: a duplicate member whose literals are both in range is accepted and canonicalizes to the last one, so the rejection above is about the literal and not about duplicate members.",
+      "input": {
+        "bodyRaw": "{\"n\":2,\"n\":1}"
+      },
+      "expect": {
+        "result": "accept",
+        "canonicalString": "{\"n\":1}"
+      }
+    },
+    {
+      "caseId": "underflow-exponent-accepts-as-zero",
+      "description": "An exponent below the smallest subnormal decodes to 0 on every IEEE-754 parser, so it is in range for the raw-text rule and is judged by the value profile in the ordinary way: 0 is a safe integer and canonicalizes to 0.",
+      "input": {
+        "bodyRaw": "{\"n\":1e-400}"
+      },
+      "expect": {
+        "result": "accept",
+        "canonicalString": "{\"n\":0}"
+      }
+    },
+    {
+      "caseId": "member-order-astral-before-bmp-accepts",
+      "description": "JCS sorts members by UTF-16 code unit, so the astral key U+1F511 (high surrogate D83D) sorts BEFORE the BMP key U+FF21. A canonicalizer that sorts by code point or by UTF-8 byte emits the reverse order and signs different bytes.",
+      "input": {
+        "bodyRaw": "{\"Ａ\":1,\"🔑\":2}"
+      },
+      "expect": {
+        "result": "accept",
+        "canonicalString": "{\"🔑\":2,\"Ａ\":1}"
+      }
+    },
+    {
+      "caseId": "member-order-mixed-scripts-nested-accepts",
+      "description": "The same UTF-16 code-unit ordering applies at every depth and against ASCII and Latin-1 neighbours: the full order is ASCII, then U+00E9, then the astral key, then U+FF21, in both the top-level object and a nested one.",
+      "input": {
+        "bodyRaw": "{\"nested\":{\"Ａ\":1,\"z\":2,\"🔑\":3,\"a\":4},\"Ａ\":5,\"é\":6,\"🔑\":7,\"Z\":8}"
+      },
+      "expect": {
+        "result": "accept",
+        "canonicalString": "{\"Z\":8,\"nested\":{\"a\":4,\"z\":2,\"🔑\":3,\"Ａ\":1},\"é\":6,\"🔑\":7,\"Ａ\":5}"
+      }
+    }
+  ]
+}
